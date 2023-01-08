@@ -1,0 +1,16 @@
+{
+    "model_config": {
+        "d_model": 200, 
+        "dim_feedforward": 200,
+        "num_layers": 2,
+        "nhead": 2,
+        "dropout": 0.1
+    },
+    "lrscheduler": {
+        "name": "steplr",
+        "config": {
+            "step_size": 1.0,
+            "gamma": 0.95  
+        }
+    }
+}

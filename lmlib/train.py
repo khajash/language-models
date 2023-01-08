@@ -1,32 +1,36 @@
-import torch
-from torch import nn, Tensor
-
 import copy
 import time
 import wandb
 import math
+import json
+import os
 
-from .model import TransformerModel
-from .utils import generate_square_subsequent_mask
-from .dataset import WikiText2Wrapper
+import torch
+from torch import nn, Tensor
+
+# language-model repo imports
+from model import TransformerModel
+from utils import generate_square_subsequent_mask
+from dataset import WikiText2Wrapper, get_batch
 
 
 
-def train_loop(model: nn.Module, optimizer, scheduler, device, config) -> None:
+def train_loop(model: nn.Module, train_data, criterion, optimizer, scheduler, device, seq_len, ntokens) -> None:
     model.train() # turn on training mode
     total_loss = 0.
     log_interval = 200
     start_time = time.time()
-    src_mask = generate_square_subsequent_mask(bptt).to(device)
+    src_mask = generate_square_subsequent_mask(seq_len).to(device)
 
-    num_batches = len(train_data)//bptt
-    for batch, i in enumerate(range(0, train_data.size(0) -1, bptt)):
-        data, targets = get_batch(train_data, i)
+    num_batches = len(train_data)//seq_len
+    for batch, i in enumerate(range(0, train_data.size(0) -1, seq_len)):
+        data, targets = get_batch(train_data, i, seq_len)
         
         # update mask if needed
-        seq_len = data.size(0)
-        if seq_len != bptt: # only on last batch
-            src_mask = src_mask[:seq_len, :seq_len]
+        true_seq_len = data.size(0)
+        if true_seq_len != seq_len: # only on last batch
+            print("Batch not equal")
+            src_mask = src_mask[:true_seq_len, :true_seq_len]
         
         # run through model and calculate loss
         output = model(data, src_mask)
@@ -45,26 +49,25 @@ def train_loop(model: nn.Module, optimizer, scheduler, device, config) -> None:
             cur_loss = total_loss / log_interval
             ppl = math.exp(cur_loss) # perplexity
             wandb.log({"ppl": ppl, "lr": lr, "curr_loss": cur_loss, "ms_per_batch": ms_per_batch})
-            print(f'| epoch {epoch:3d} | {batch:5d}/{num_batches:5d} batches | '
+            print(f'| {batch:5d}/{num_batches:5d} batches | '
                   f'lr {lr:02.2f} | ms/batch {ms_per_batch:5.2f} | '
                   f'loss {cur_loss:5.2f} | ppl {ppl:8.2f}')
             total_loss = 0
             start_time = time.time()     
 
 
-def evaluate_loop(model: nn.Module, eval_data: Tensor) -> float:
+def evaluate_loop(model: nn.Module, eval_data: Tensor, criterion, device, seq_len, ntokens) -> float:
     model.eval() # turn on evaluation mode
     total_loss = 0.
-    src_mask = generate_square_subsequent_mask(bptt).to(device)
+    src_mask = generate_square_subsequent_mask(seq_len).to(device)
     with torch.no_grad():
-        for i in range(0, eval_data.size(0) - 1, bptt):
-            data, targets = get_batch(eval_data, i)
+        for i in range(0, eval_data.size(0) - 1, seq_len):
+            data, targets = get_batch(eval_data, i, seq_len)
             
-            # update mask if needed
-            seq_len = data.size(0)
-            if seq_len != bptt: # only on last batch
-                src_mask = src_mask[:seq_len, :seq_len]
-
+            true_seq_len = data.size(0)
+            if true_seq_len != seq_len: # only on last batch
+                print("Batch not equal")
+                src_mask = src_mask[:true_seq_len, :true_seq_len]
 
             # run through model and calculate loss
             output = model(data, src_mask)
@@ -89,8 +92,8 @@ def setup_training_parser():
         help="Model Name",
     )
     parser.add_argument(
-        "--yaml",
-        default="./models/configs/config-vgg-small.yaml", 
+        "--config",
+        default="./configs/simple-transformer.json", 
         type=str,
         help="Save model when done.",
     )
@@ -102,31 +105,27 @@ def setup_training_parser():
     )
     parser.add_argument(
         "--n_epochs",
-        default=75,
+        default=50,
         type=int,
-        help="Number of epochs to run the training. (int, default = 75)",
+        help="Number of epochs to run the training. (int, default = 50)",
     )
     parser.add_argument(
         "--batch_size",
-        default=64,
+        default=20,
         type=int,
-        help="Batch size for mini-batch training. (int, default = 64)",
+        help="Batch size for mini-batch training. (int, default = 20)",
     )
+
     parser.add_argument(
-        "--momentum",
-        default=0.9,
-        type=float,
-        help="Momentum used in SGD optimizer. (float, default = 0.9)",
-)
-    parser.add_argument(
-        "--decay",
-        default=5e-4,
-        type=float,
-        help="Weight Decay used in SGD optimizer. (float, default = 5e-4)",
+        "--seq_len",
+        default=35,
+        type=int,
+        help="Max length of a sequence. (int, default = 35)",
     )
+
     parser.add_argument(
         "--lr",
-        default=1e-4,
+        default=5.0,
         type=float,
         help="Learning rate. (float, default = 1e-4)",
     )
@@ -136,43 +135,73 @@ def setup_training_parser():
         help="Save model when done.",
     )
 
+    parser.add_argument(
+        "--dryrun",
+        action="store_true",
+        help="Save model when done.",
+    )
+
     return parser.parse_args()
 
 
 def main():
 
+    args = setup_training_parser()
+    cmd_config = vars(args)
+    print(args)
+
+    # Load config file
+    with open(args.config, "r") as f:
+        config = json.load(f)
+
+    # Overwride json with any cmd args
+    config.update(
+        dataset="WikiText2",
+        network=args.model,
+        **cmd_config
+    )
+
+    # Don't log wandbs
+    if args.dryrun:
+        print("Running mode: DRYRUN - wandb disabled")
+        os.environ['WANDB_SILENT']="true"
+
+    print("configs: ", config)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Working on: {device}")
 
-    dataset = WikiText2Wrapper(root=root)
+    torch.manual_seed(args.seed)
+    # np.random.seed(args.seed)
 
-    ntokens = len(vocab)  # size of vocabulary
-    emsize = 200  # embedding dimension
-    d_hid = 200  # dimension of the feedforward network model in nn.TransformerEncoder
-    nlayers = 2  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
-    nhead = 2  # number of heads in nn.MultiheadAttention
-    dropout = 0.5  # dropout probability
-    gamma = 0.97
+    # Setup and load datasets
+    dataset = WikiText2Wrapper(root=args.datadir)
+    ntokens = dataset.get_vocab_size() # size of vocabulary
+    train_data, val_data, test_data = dataset.load_and_process_data(
+        batch_size=args.batch_size, 
+        eval_batch_size=10, 
+        device=device)
+    print(f"Train Data: {train_data.shape}, Val Data: {val_data.shape}")
 
-    model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout).to(device)
+    model = TransformerModel(ntokens, **config["model_config"]).to(device)
     
     criterion = nn.CrossEntropyLoss()
-    lr = 5.0
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=gamma)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, **config["lrscheduler"]["config"])
 
-    wandb.init(project="Transformer", config=config)
-    wandb.watch(model, log_freq=10)
-
+    wandb.init(project="Transformer", group=f"{args.model}-v0)", config=config)
+    # wandb.watch(model, log_freq=10) # log gradients
 
     best_val_loss = float('inf')
-    epochs = 50
     best_model = None
-    for epoch in range(1, epochs + 1):
+    print("-" * 89)
+    for epoch in range(1, args.n_epochs + 1):
         epoch_start_time = time.time()
-        train(model)
-        val_loss = evaluate(model, val_data)
+        print(f'Start of epoch {epoch}')
+        train_loop(model, train_data, criterion=criterion, optimizer=optimizer, scheduler=scheduler,         
+                   device=device, seq_len=args.seq_len, ntokens=ntokens)
+        val_loss = evaluate_loop(model, val_data, criterion=criterion, device=device, 
+                                 seq_len=args.seq_len, ntokens=ntokens)
         val_ppl = math.exp(val_loss)
         wandb.log({"val_loss": val_loss, "val_ppl": val_ppl, "epoch": epoch})
         elapsed = time.time() - epoch_start_time
@@ -181,11 +210,14 @@ def main():
             f'valid loss {val_loss:5.2f} | valid ppl {val_ppl:8.2f}')
         print('-' * 89)
 
-        if val_loss < best_val_loss:
+        if val_loss < best_val_loss and args.save_model:
             best_val_loss = val_loss
             best_model = copy.deepcopy(model)
-            torch.save(model.state_dict(), PATH)
+            torch.save(best_model.state_dict(), os.path.join(wandb.run.dir, "model.pt"))
 
         scheduler.step()
 
     wandb.finish()
+
+if __name__ == "__main__":
+    main()

@@ -7,6 +7,22 @@ from torchtext.vocab import build_vocab_from_iterator
 from torchtext.vocab.vocab import Vocab
 
 
+def get_batch(source: torch.Tensor, i: int, seqlen: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Args:
+        source: Tensor, shape [full_seq_len, batch_size]
+        i: int
+
+    Returns:
+        tuple (data, target), where data has shape [seq_len, batch_size] and
+        target has shape [seq_len * batch_size]
+    """
+    seq_len = min(seqlen, len(source) - 1 - i)
+    data = source[i:i+seq_len]
+    target = source[i+1:i+1+seq_len].reshape(-1)
+    return data, target
+    
+
 class DatasetWrapper:
     def __init__(self, root: str):
         self.root = root
@@ -59,22 +75,6 @@ class DatasetWrapper:
         data = data[:seq_len * batch_size]
         data = data.view(batch_size, seq_len).t().contiguous()
         return data.to(device)
-
-    def get_batch(self, source: torch.Tensor, i: int, seqlen: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Args:
-            source: Tensor, shape [full_seq_len, batch_size]
-            i: int
-
-        Returns:
-            tuple (data, target), where data has shape [seq_len, batch_size] and
-            target has shape [seq_len * batch_size]
-        """
-        seq_len = min(seqlen, len(source) - 1 - i)
-        data = source[i:i+seq_len]
-        target = source[i+1:i+1+seq_len].reshape(-1)
-        return data, target
-    
 
 
 class WikiText2Wrapper(DatasetWrapper):
