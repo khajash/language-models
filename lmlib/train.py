@@ -29,7 +29,6 @@ def train_loop(model: nn.Module, train_data, criterion, optimizer, scheduler, de
         # update mask if needed
         true_seq_len = data.size(0)
         if true_seq_len != seq_len: # only on last batch
-            print("Batch not equal")
             src_mask = src_mask[:true_seq_len, :true_seq_len]
         
         # run through model and calculate loss
@@ -64,15 +63,15 @@ def evaluate_loop(model: nn.Module, eval_data: Tensor, criterion, device, seq_le
         for i in range(0, eval_data.size(0) - 1, seq_len):
             data, targets = get_batch(eval_data, i, seq_len)
             
+            # update mask if needed
             true_seq_len = data.size(0)
             if true_seq_len != seq_len: # only on last batch
-                print("Batch not equal")
                 src_mask = src_mask[:true_seq_len, :true_seq_len]
 
             # run through model and calculate loss
             output = model(data, src_mask)
             output_flat = output.view(-1, ntokens)
-            total_loss += seq_len * criterion(output_flat, targets).item()
+            total_loss += true_seq_len * criterion(output_flat, targets).item()
     return total_loss / (len(eval_data) - 1)
 
 
