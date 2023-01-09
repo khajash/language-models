@@ -13,6 +13,7 @@ from model import TransformerModel
 from utils import generate_square_subsequent_mask
 from dataset import WikiText2Wrapper, get_batch
 from schedulers import invsqrt_warm
+import parsers
 
 
 
@@ -78,71 +79,6 @@ def evaluate_loop(model: nn.Module, eval_data: Tensor, criterion, device, seq_le
     return total_loss / (len(eval_data) - 1)
 
 
-def setup_training_parser():
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--datadir", 
-        default="/home/kate/Code", 
-        type=str,
-    )
-    parser.add_argument(
-        "--model",
-        default="Transformer", 
-        type=str,
-        help="Model Name",
-    )
-    parser.add_argument(
-        "--config",
-        default="./configs/simple-transformer.json", 
-        type=str,
-        help="Specify json config file.",
-    )
-    parser.add_argument(
-        "--seed",
-        default=0,
-        type=int,
-        help="Random seed. (int, default = 0)",
-    )
-    parser.add_argument(
-        "--n_epochs",
-        default=50,
-        type=int,
-        help="Number of epochs to run the training. (int, default = 50)",
-    )
-    parser.add_argument(
-        "--batch_size",
-        default=20,
-        type=int,
-        help="Batch size for mini-batch training. (int, default = 20)",
-    )
-    parser.add_argument(
-        "--seq_len",
-        default=35,
-        type=int,
-        help="Max length of a sequence. (int, default = 35)",
-    )
-    parser.add_argument(
-        "--lr",
-        default=5.0,
-        type=float,
-        help="Learning rate. (float, default = 1e-4)",
-    )
-    parser.add_argument(
-        "--save_model",
-        action="store_true",
-        help="Save model when done.",
-    )
-    parser.add_argument(
-        "--dryrun",
-        action="store_true",
-        help="Run in dryrun mode without wandb.",
-    )
-
-    return parser.parse_args()
-
-
 def setup_lr_scheduler(optimizer, config):
     name = config["name"].lower()
     if name == "steplr":
@@ -160,8 +96,18 @@ def setup_lr_scheduler(optimizer, config):
 
 def main():
 
-    args = setup_training_parser()
-    cmd_config = vars(args)
+    # Set this to True if you want to override config params with commandline params
+    RUN_WANDB_SWEEP = True
+
+    parent_parser = parsers.setup_training_parser()
+    if RUN_WANDB_SWEEP:
+        parser = parsers.setup_wandb_sweep_parser(parent_parser)
+        args = parser.parse_args()
+        cmd_config = vars(args)
+        cmd_config, sweep_config = parsers.pop_arguments(cmd_config, parsers.SWEEP_PARAMS)
+    else:
+        args = parent_parser.parse_args()
+        cmd_config = vars(args)
     print(args)
 
     # Load config file
@@ -174,6 +120,20 @@ def main():
         network=args.model,
         **cmd_config
     )
+
+    # Overwrite config using wandb sweep parameters
+    if RUN_WANDB_SWEEP:
+        config["model_config"] = {
+            "d_model": sweep_config["d_model"],
+            "dim_feedforward": sweep_config["dim_feedforward"],
+            "num_layers": sweep_config["num_layers"],
+            "nhead": sweep_config["nhead"],
+            "dropout": sweep_config["dropout"]
+        }
+        config["lrscheduler"]["config"].update(
+            d_model=sweep_config["d_model"],
+            warmup_steps=sweep_config["warmup_steps"]
+        )
 
     # Don't log wandbs
     if args.dryrun:
@@ -207,6 +167,7 @@ def main():
 
     wandb.init(project="Transformer", group=f"{args.model}-v0)", config=config)
     # wandb.watch(model, log_freq=10) # log gradients
+    wandb.config.update({"id": wandb.run.id})
 
     best_val_loss = float('inf')
     best_model = None
