@@ -12,6 +12,7 @@ from torch import nn, Tensor
 from model import TransformerModel
 from utils import generate_square_subsequent_mask
 from dataset import WikiText2Wrapper, get_batch
+from schedulers import invsqrt_warm
 
 
 
@@ -42,17 +43,19 @@ def train_loop(model: nn.Module, train_data, criterion, optimizer, scheduler, de
         optimizer.step()
 
         total_loss += loss.item()
+        scheduler.step()
         if batch % log_interval == 0 and batch > 0:
             lr = scheduler.get_last_lr()[0]
+            print(f"{lr=}")
             ms_per_batch = (time.time() - start_time) * 1000 / log_interval
             cur_loss = total_loss / log_interval
             ppl = math.exp(cur_loss) # perplexity
             wandb.log({"ppl": ppl, "lr": lr, "curr_loss": cur_loss, "ms_per_batch": ms_per_batch})
             print(f'| {batch:5d}/{num_batches:5d} batches | '
-                  f'lr {lr:02.2f} | ms/batch {ms_per_batch:5.2f} | '
+                  f'lr {lr:02.8f} | ms/batch {ms_per_batch:5.2f} | '
                   f'loss {cur_loss:5.2f} | ppl {ppl:8.2f}')
             total_loss = 0
-            start_time = time.time()     
+            start_time = time.time()
 
 
 def evaluate_loop(model: nn.Module, eval_data: Tensor, criterion, device, seq_len, ntokens) -> float:
@@ -94,7 +97,7 @@ def setup_training_parser():
         "--config",
         default="./configs/simple-transformer.json", 
         type=str,
-        help="Save model when done.",
+        help="Specify json config file.",
     )
     parser.add_argument(
         "--seed",
@@ -114,14 +117,12 @@ def setup_training_parser():
         type=int,
         help="Batch size for mini-batch training. (int, default = 20)",
     )
-
     parser.add_argument(
         "--seq_len",
         default=35,
         type=int,
         help="Max length of a sequence. (int, default = 35)",
     )
-
     parser.add_argument(
         "--lr",
         default=5.0,
@@ -133,14 +134,28 @@ def setup_training_parser():
         action="store_true",
         help="Save model when done.",
     )
-
     parser.add_argument(
         "--dryrun",
         action="store_true",
-        help="Save model when done.",
+        help="Run in dryrun mode without wandb.",
     )
 
     return parser.parse_args()
+
+
+def setup_lr_scheduler(optimizer, config):
+    name = config["name"].lower()
+    if name == "steplr":
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, **config["config"])
+    elif name == "invsqrt_warm":
+        # LR Scheduler from original attention paper
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer, lr_lambda=lambda step: invsqrt_warm(step, **config["config"]))
+    else:
+        raise KeyError(f"Does not support LR Scheduler {name}")
+        
+    return scheduler
+
 
 
 def main():
@@ -185,8 +200,10 @@ def main():
     model = TransformerModel(ntokens, **config["model_config"]).to(device)
     
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, **config["lrscheduler"]["config"])
+    # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), eps=1e-8)
+    # TODO: add LR scheduler from GPT and original paper
+    scheduler = setup_lr_scheduler(optimizer, config["lrscheduler"])
 
     wandb.init(project="Transformer", group=f"{args.model}-v0)", config=config)
     # wandb.watch(model, log_freq=10) # log gradients
@@ -209,12 +226,15 @@ def main():
             f'valid loss {val_loss:5.2f} | valid ppl {val_ppl:8.2f}')
         print('-' * 89)
 
+        # Only save better performing model
         if val_loss < best_val_loss and args.save_model:
             best_val_loss = val_loss
             best_model = copy.deepcopy(model)
             torch.save(best_model.state_dict(), os.path.join(wandb.run.dir, "model.pt"))
 
-        scheduler.step()
+        # TODO: add early stopping if model is not performing well
+        # move lr scheduler step to each training iteration
+        # scheduler.step()
 
     wandb.finish()
 

@@ -1,0 +1,17 @@
+{
+    "model_config": {
+        "d_model": 200, 
+        "dim_feedforward": 200,
+        "num_layers": 2,
+        "nhead": 2,
+        "dropout": 0.3
+    },
+    "lrscheduler": {
+        "name": "invsqrt_warm",
+        "config": {
+            "d_model": 200,
+            "weight": 1,
+            "warmup_steps": 20000 
+        }
+    }
+}
