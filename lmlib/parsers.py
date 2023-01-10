@@ -56,6 +56,12 @@ def setup_training_parser():
         help="Batch size for mini-batch training. (int, default = 20)",
     )
     parser.add_argument(
+        "--eval_batch_size",
+        default=10,
+        type=int,
+        help="Batch size for mini-batch training. (int, default = 20)",
+    )
+    parser.add_argument(
         "--seq_len",
         default=35,
         type=int,

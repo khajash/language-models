@@ -9,33 +9,35 @@ import torch
 from torch import nn, Tensor
 
 # language-model repo imports
-from models.transformer import TransformerModel
-from utils import generate_square_subsequent_mask
+from models.recurrent import RecurrentModel
 from dataset import WikiText2Wrapper, get_batch
 from schedulers import invsqrt_warm
 import parsers
 
 
 
-def train_loop(model: nn.Module, train_data, criterion, optimizer, scheduler, device, seq_len, ntokens) -> None:
+def train_loop(model: nn.Module, train_data, criterion, optimizer, scheduler, device, seq_len, ntokens, hidden) -> None:
     model.train() # turn on training mode
     total_loss = 0.
     log_interval = 200
     start_time = time.time()
-    src_mask = generate_square_subsequent_mask(seq_len).to(device)
+    # TODO: look at stateful vs stateless RNN - I think something here might be wrong - need to look into...
+    # trying stateful for this since it's long sequences
+    # hidden = torch.zeros(config["num_layers"], config["batch_size"], config["d_hidden"])
 
     num_batches = len(train_data)//seq_len
     for batch, i in enumerate(range(0, train_data.size(0) -1, seq_len)):
         data, targets = get_batch(train_data, i, seq_len)
-        
-        # update mask if needed
+
         true_seq_len = data.size(0)
-        if true_seq_len != seq_len: # only on last batch
-            src_mask = src_mask[:true_seq_len, :true_seq_len]
+        # if true_seq_len != seq_len:
+        #     continue
+        #     # hidden = hidden[:, :true_seq_len]
         
         # run through model and calculate loss
-        output = model(data, src_mask)
+        output, hidden_i = model(data, hidden)
         loss = criterion(output.view(-1, ntokens), targets)
+        hidden = hidden_i.detach()
 
         # update gradients and perform sgd
         optimizer.zero_grad()
@@ -59,23 +61,25 @@ def train_loop(model: nn.Module, train_data, criterion, optimizer, scheduler, de
             start_time = time.time()
 
 
-def evaluate_loop(model: nn.Module, eval_data: Tensor, criterion, device, seq_len, ntokens) -> float:
+def evaluate_loop(model: nn.Module, eval_data: Tensor, criterion, device, seq_len, ntokens, hidden) -> float:
     model.eval() # turn on evaluation mode
     total_loss = 0.
-    src_mask = generate_square_subsequent_mask(seq_len).to(device)
     with torch.no_grad():
+        # trying stateful for this since it's long sequences
+        
         for i in range(0, eval_data.size(0) - 1, seq_len):
             data, targets = get_batch(eval_data, i, seq_len)
             
-            # update mask if needed
             true_seq_len = data.size(0)
-            if true_seq_len != seq_len: # only on last batch
-                src_mask = src_mask[:true_seq_len, :true_seq_len]
+            if true_seq_len != seq_len:
+                continue
+                # hidden = hidden[:, :true_seq_len]
 
             # run through model and calculate loss
-            output = model(data, src_mask)
+            output, hidden_i= model(data, hidden)
             output_flat = output.view(-1, ntokens)
             total_loss += true_seq_len * criterion(output_flat, targets).item()
+            hidden = hidden_i.detach()
     return total_loss / (len(eval_data) - 1)
 
 
@@ -98,7 +102,7 @@ def main():
 
     # Set this to True if you want to override config params with commandline params
     # TODO: confirm this works correctly without sweep
-    RUN_WANDB_SWEEP = True
+    RUN_WANDB_SWEEP = False
 
     parent_parser = parsers.setup_training_parser()
     if RUN_WANDB_SWEEP:
@@ -126,9 +130,8 @@ def main():
     if RUN_WANDB_SWEEP:
         config["model_config"] = {
             "d_model": sweep_config["d_model"],
-            "dim_feedforward": sweep_config["dim_feedforward"],
             "num_layers": sweep_config["num_layers"],
-            "nhead": sweep_config["nhead"],
+            "cell_type": sweep_config["cell_type"],
             "dropout": sweep_config["dropout"]
         }
         config["lrscheduler"]["config"].update(
@@ -155,18 +158,18 @@ def main():
     ntokens = dataset.get_vocab_size() # size of vocabulary
     train_data, val_data, test_data = dataset.load_and_process_data(
         batch_size=args.batch_size, 
-        eval_batch_size=10, 
+        eval_batch_size=args.eval_batch_size,
         device=device)
     print(f"Train Data: {train_data.shape}, Val Data: {val_data.shape}")
 
-    model = TransformerModel(ntokens, **config["model_config"]).to(device)
+    model = RecurrentModel(ntokens, **config["model_config"]).to(device)
     
     criterion = nn.CrossEntropyLoss()
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), eps=1e-8)
     scheduler = setup_lr_scheduler(optimizer, config["lrscheduler"])
 
-    wandb.init(project="Transformer", group=f"{args.model}-v0)", config=config)
+    wandb.init(project="Recurrent", group=f"{args.model}-v0)", config=config)
     # wandb.watch(model, log_freq=10) # log gradients
     wandb.config.update({"id": wandb.run.id})
 
@@ -176,10 +179,18 @@ def main():
     for epoch in range(1, args.n_epochs + 1):
         epoch_start_time = time.time()
         print(f'Start of epoch {epoch}')
+        hidden = torch.zeros(
+            config["model_config"]["num_layers"], 
+            args.batch_size, 
+            config["model_config"]["d_model"]).to(device)
         train_loop(model, train_data, criterion=criterion, optimizer=optimizer, scheduler=scheduler,         
-                   device=device, seq_len=args.seq_len, ntokens=ntokens)
+                   device=device, seq_len=args.seq_len, ntokens=ntokens, hidden=hidden)
+        hidden = torch.zeros(
+            config["model_config"]["num_layers"], 
+            args.eval_batch_size, 
+            config["model_config"]["d_model"]).to(device)
         val_loss = evaluate_loop(model, val_data, criterion=criterion, device=device, 
-                                 seq_len=args.seq_len, ntokens=ntokens)
+                                 seq_len=args.seq_len, ntokens=ntokens, hidden=hidden)
         val_ppl = math.exp(val_loss)
         wandb.log({"val_loss": val_loss, "val_ppl": val_ppl, "epoch": epoch})
         elapsed = time.time() - epoch_start_time

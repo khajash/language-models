@@ -50,6 +50,7 @@ class TransformerModel(nn.Module):
         self.init_weights()
 
     def init_weights(self) -> None:
+        # TODO: udpate initialization
         initrange = 0.1
         self.encoder.weight.data.uniform_(-initrange, initrange)
         self.decoder.bias.data.zero_()
