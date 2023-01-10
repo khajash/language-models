@@ -21,15 +21,14 @@ parameters:
     min: 0.1
     distribution: uniform
   num_layers:
-    max: 6
+    max: 4
     min: 2
     distribution: int_uniform
   nhead:
-    max: 6
-    min: 2
-    distribution: int_uniform
+    values: [2,4,8]
+    distribution: categorical
   d_model:
-    values: [128, 256, 512]
+    values: [128, 256]
     distribution: categorical
   dim_feedforward:
     values: [128, 256, 512]
