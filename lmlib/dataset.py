@@ -41,24 +41,33 @@ class DatasetWrapper:
         return tokenizer, vocab
 
     def load_and_process_data(self, batch_size: int, eval_batch_size: int, device: torch.device):
-        return self._load_and_process_data_helper(self.root, self.tokenizer, self.vocab,
-                                                  batch_size, eval_batch_size, device)
+        return self._load_and_process_data_helper(self.root, batch_size, eval_batch_size, device)
 
-    def _load_and_process_data_helper(self, root:str, tokenizer, vocab: Vocab, 
-        batch_size: int, eval_batch_size: int, device: torch.device):
-        
+    def _load_and_process_data_helper(self, root:str, batch_size: int, eval_batch_size: int, device: torch.device):
         raise NotImplementedError
 
     def data_process(
         self,
-        vocab: Vocab, 
-        tokenizer, #: function, 
         raw_text_iter: dataset.IterableDataset
     ) -> torch.Tensor:
 
         """Converts raw text into a flat Tensor."""
-        data = [torch.tensor(vocab(tokenizer(item)), dtype=torch.long) for item in raw_text_iter]
+        data = [torch.tensor(self.vocab(self.tokenizer(item)), dtype=torch.long) for item in raw_text_iter]
         return torch.cat(tuple(filter(lambda t: t.numel() > 0, data)))
+
+    def data_process_str(
+        self,
+        raw_text: str
+    ) -> torch.Tensor:
+
+        """Converts raw text into a flat Tensor."""
+        # TODO: simplify this
+        data = [torch.tensor(self.vocab(self.tokenizer(raw_text)), dtype=torch.long)]
+        return torch.cat(tuple(filter(lambda t: t.numel() > 0, data)))
+
+    def tokens2string(self, data):
+        return " ".join(self.vocab.lookup_tokens(data))
+
 
     def batchify(self, data: torch.Tensor, batch_size: int, device: torch.device) -> torch.Tensor:
         """Divides the data into batch_size separate sequences, removing extra elements
@@ -87,16 +96,15 @@ class WikiText2Wrapper(DatasetWrapper):
         train_data = WikiText2(root=root, split='train')
         return super()._build_vocab_helper(train_data)
 
-    def _load_and_process_data_helper(self, root:str, tokenizer, vocab: Vocab, 
-        batch_size: int, eval_batch_size: int, device: torch.device):
+    def _load_and_process_data_helper(self, root:str, batch_size: int, eval_batch_size: int, device: torch.device):
         
         if eval_batch_size <= 0:
             eval_batch_size = batch_size
 
         train_iter, val_iter, test_iter = WikiText2(root=root)
-        train_data = self.batchify(self.data_process(vocab, tokenizer, train_iter), batch_size, device)
-        val_data = self.batchify(self.data_process(vocab, tokenizer, val_iter), eval_batch_size, device)
-        test_data = self.batchify(self.data_process(vocab, tokenizer, test_iter), eval_batch_size, device)
+        train_data = self.batchify(self.data_process(train_iter), batch_size, device)
+        val_data = self.batchify(self.data_process(val_iter), eval_batch_size, device)
+        test_data = self.batchify(self.data_process(test_iter), eval_batch_size, device)
         return train_data, val_data, test_data
 
 
