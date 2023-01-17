@@ -139,11 +139,7 @@ def main():
             warmup_steps=sweep_config["warmup_steps"]
         )
 
-    # Don't log wandbs
-    # TODO: fix this - dryrun is not doing what I want - need to disable
-    if args.dryrun:
-        print("Running mode: DRYRUN - wandb disabled")
-        os.environ['WANDB_SILENT']="true"
+
 
     print("configs: ", config)
 
@@ -169,9 +165,16 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), eps=1e-8)
     scheduler = setup_lr_scheduler(optimizer, config["lrscheduler"])
 
-    wandb.init(project="Recurrent", group=f"{args.model}-v0)", config=config)
-    # wandb.watch(model, log_freq=10) # log gradients
-    wandb.config.update({"id": wandb.run.id})
+    # Don't log wandbs
+    # TODO: fix this - dryrun is not doing what I want - need to disable
+    if args.dryrun:
+        print("Running mode: DRYRUN - wandb disabled")
+        # os.environ['WANDB_SILENT']="true"
+        wandb.init(mode="disabled")
+    else:
+        wandb.init(project="Recurrent", group=f"{args.model}-v0)", config=config)
+        # wandb.watch(model, log_freq=10) # log gradients
+        wandb.config.update({"id": wandb.run.id})
 
     best_val_loss = float('inf')
     best_model = None

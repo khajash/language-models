@@ -50,6 +50,7 @@ def train_loop(model: nn.Module, train_data, criterion, optimizer, scheduler, de
             print(f"{lr=}")
             ms_per_batch = (time.time() - start_time) * 1000 / log_interval
             cur_loss = total_loss / log_interval
+            print(f"{cur_loss=}")
             ppl = math.exp(cur_loss) # perplexity
             wandb.log({"ppl": ppl, "lr": lr, "curr_loss": cur_loss, "ms_per_batch": ms_per_batch})
             print(f'| {batch:5d}/{num_batches:5d} batches | '
@@ -98,7 +99,7 @@ def main():
 
     # Set this to True if you want to override config params with commandline params
     # TODO: confirm this works correctly without sweep
-    RUN_WANDB_SWEEP = True
+    RUN_WANDB_SWEEP = False
 
     parent_parser = parsers.setup_training_parser()
     if RUN_WANDB_SWEEP:
@@ -136,11 +137,6 @@ def main():
             warmup_steps=sweep_config["warmup_steps"]
         )
 
-    # Don't log wandbs
-    # TODO: fix this - dryrun is not doing what I want - need to disable
-    if args.dryrun:
-        print("Running mode: DRYRUN - wandb disabled")
-        os.environ['WANDB_SILENT']="true"
 
     print("configs: ", config)
 
@@ -166,9 +162,14 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), eps=1e-8)
     scheduler = setup_lr_scheduler(optimizer, config["lrscheduler"])
 
-    wandb.init(project="Transformer", group=f"{args.model}-v0)", config=config)
-    # wandb.watch(model, log_freq=10) # log gradients
-    wandb.config.update({"id": wandb.run.id})
+    if args.dryrun:
+        print("Running mode: DRYRUN - wandb disabled")
+        # os.environ['WANDB_SILENT']="true"
+        wandb.init(mode="disabled")
+    else:
+        wandb.init(project="Transformer", group=f"{args.model}-cosineLR", config=config)
+        # wandb.watch(model, log_freq=10) # log gradients
+        wandb.config.update({"id": wandb.run.id})
 
     best_val_loss = float('inf')
     best_model = None
@@ -192,12 +193,13 @@ def main():
         if val_loss < best_val_loss and args.save_model:
             best_val_loss = val_loss
             best_model = copy.deepcopy(model)
-            torch.save(best_model.state_dict(), os.path.join(wandb.run.dir, "model.pt"))
+            torch.save(best_model.state_dict(), os.path.join(wandb.run.dir, "best_model.pt"))
 
         # TODO: add early stopping if model is not performing well
         # NOTE: moved lr scheduler step to each training iteration
         # scheduler.step()
 
+    torch.save(best_model.state_dict(), os.path.join(wandb.run.dir, "last_model.pt"))
     wandb.finish()
 
 if __name__ == "__main__":
