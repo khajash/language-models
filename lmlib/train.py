@@ -169,7 +169,7 @@ def main():
     
     criterion = nn.CrossEntropyLoss()
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
-    optimizer = model.configure_optimizers(weight_decay=0.01, learning_rate=config["lrscheduler"]["config"]["max_lr"], betas=(0.9, 0.98))
+    optimizer = model.configure_optimizers(weight_decay=0.01, learning_rate=config["lrscheduler"]["config"]["max_lr"], betas=(0.9, 0.95))
     # optimizer = torch.optim.Adam(model.parameters(), lr=config["lrscheduler"]["config"]["max_lr"], betas=(0.9, 0.98), eps=1e-8)
     scheduler = setup_lr_scheduler(optimizer, config["lrscheduler"])
 
