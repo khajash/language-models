@@ -28,7 +28,7 @@ class PositionalEncoding(nn.Module):
 class TransformerModel(nn.Module):
     
     def __init__(self, ntoken: int, d_model: int, nhead: int, dim_feedforward: int,
-                 num_layers: int, dropout: float = 0.5) -> None:
+                 num_layers: int, dropout: float = 0.5, activation: str = "gelu", norm_first: bool = False) -> None:
         """
         Args:
             ntoken: int, size of vocabulary
@@ -43,7 +43,8 @@ class TransformerModel(nn.Module):
         self.d_model = d_model
         self.encoder = nn.Embedding(ntoken, d_model)
         self.pos_encoder = PositionalEncoding(d_model, dropout) # why use dropout here?
-        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward=dim_feedforward, dropout=dropout)
+        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward=dim_feedforward, dropout=dropout, 
+                                                    activation=activation, norm_first=norm_first)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers)
         self.decoder = nn.Linear(d_model, ntoken)
 

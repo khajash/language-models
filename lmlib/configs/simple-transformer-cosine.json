@@ -4,7 +4,9 @@
         "dim_feedforward": 128,
         "num_layers": 4,
         "nhead": 4,
-        "dropout": 0.1
+        "dropout": 0.1,
+        "activation": "gelu",
+        "norm_first": true
     },
     "lrscheduler": {
         "name": "cosine_warm",
