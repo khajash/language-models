@@ -1,0 +1,18 @@
+{
+    "model_config": {
+        "d_model": 128, 
+        "dim_feedforward": 128,
+        "num_layers": 4,
+        "nhead": 4,
+        "dropout": 0.1
+    },
+    "lrscheduler": {
+        "name": "cosine_warm",
+        "config": {
+            "lr_decay_iters": 600000,
+            "min_lr": 6e-5,
+            "max_lr": 6e-4,
+            "warmup_steps": 2000
+        }
+    }
+}

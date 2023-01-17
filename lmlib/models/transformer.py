@@ -52,9 +52,11 @@ class TransformerModel(nn.Module):
     def init_weights(self) -> None:
         # TODO: udpate initialization
         initrange = 0.1
-        self.encoder.weight.data.uniform_(-initrange, initrange)
+        # self.encoder.weight.data.uniform_(-initrange, initrange)
+        self.encoder.weight.data.normal_(0, 0.02)
         self.decoder.bias.data.zero_()
-        self.decoder.weight.data.uniform_(-initrange, initrange)
+        self.decoder.weight.data.normal_(0, 0.02)
+        # self.decoder.weight.data.uniform_(-initrange, initrange)
         
     def forward(self, src: Tensor, src_mask: Tensor) -> Tensor:
         """
