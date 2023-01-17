@@ -12,7 +12,8 @@ from torch import nn, Tensor
 from models.transformer import TransformerModel
 from utils import generate_square_subsequent_mask
 from dataset import WikiText2Wrapper, get_batch
-from schedulers import invsqrt_warm
+# from schedulers import invsqrt_warm, cosine_warm
+from schedulers import InvSqrtWarmupLR, CosineWarmupLR
 import parsers
 
 
@@ -38,13 +39,15 @@ def train_loop(model: nn.Module, train_data, criterion, optimizer, scheduler, de
         loss = criterion(output.view(-1, ntokens), targets)
 
         # update gradients and perform sgd
-        optimizer.zero_grad()
+        # optimizer.zero_grad()
+        scheduler.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-        optimizer.step()
+
+        scheduler.step()
+        # optimizer.step()
 
         total_loss += loss.item()
-        scheduler.step()
         if batch % log_interval == 0 and batch > 0:
             lr = scheduler.get_last_lr()[0]
             print(f"{lr=}")
@@ -86,8 +89,14 @@ def setup_lr_scheduler(optimizer, config):
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, **config["config"])
     elif name == "invsqrt_warm":
         # LR Scheduler from original attention paper
-        scheduler = torch.optim.lr_scheduler.LambdaLR(
-            optimizer, lr_lambda=lambda step: invsqrt_warm(step, **config["config"]))
+        scheduler = InvSqrtWarmupLR(optimizer, **config["config"])
+        # scheduler = torch.optim.lr_scheduler.LambdaLR(
+        #     optimizer, lr_lambda=lambda step: invsqrt_warm(step, **config["config"]))
+    elif name == "cosine_warm":
+        # LR Scheduler from GPT paper
+        scheduler = CosineWarmupLR(optimizer, **config["config"])
+        # scheduler = torch.optim.lr_scheduler.LambdaLR(
+        #     optimizer, lr_lambda=lambda step: cosine_warm(step, **config["config"]))
     else:
         raise KeyError(f"Does not support LR Scheduler {name}")
         
@@ -149,6 +158,7 @@ def main():
     # Setup and load datasets
     dataset = WikiText2Wrapper(root=args.datadir)
     ntokens = dataset.get_vocab_size() # size of vocabulary
+    print("vocabulary size: ", ntokens)
     train_data, val_data, test_data = dataset.load_and_process_data(
         batch_size=args.batch_size, 
         eval_batch_size=10, 
