@@ -64,14 +64,14 @@ $$
 ### 3.1 Dataset
 I am using WikiText2 from `torchtext`.  Below is an exeprt from the dataset. As you can see, it is already preprocessed having the rare words replaced with the `<unk>` token. The vocabulary has a total of 28,782 tokens it. 
 
-```
+<code>
 
  = Valkyria Chronicles III = 
 
  
 
  Senjō no Valkyria 3 : <unk> Chronicles ( Japanese : 戦場のヴァルキュリア3 , lit . Valkyria of the Battlefield 3 ) , commonly referred to as Valkyria Chronicles III outside Japan , is a tactical role @-@ playing video game developed by Sega and Media.Vision for the PlayStation Portable . Released in January 2011 in Japan , it is the third game in the Valkyria series . <unk> the same fusion of tactical and real @-@ time gameplay as its predecessors , the story runs parallel to the first game and follows the " Nameless " , a penal military unit serving the nation of Gallia during the Second Europan War who perform secret black operations and are pitted against the Imperial unit " <unk> Raven " . 
-```
+</code>
 
 
 
@@ -88,7 +88,6 @@ I am using WikiText2 from `torchtext`.  Below is an exeprt from the dataset. As 
 ---
 ### Transformer Architecture References
 
-**TODO: finish and refine notes!!**
 #### Attention is All You Need
 - **Architecture**
   - Encoder-Decoder Transformer model for Machine Translation
@@ -105,11 +104,7 @@ I am using WikiText2 from `torchtext`.  Below is an exeprt from the dataset. As 
     - Following the residual connection is layer normalization.
   - **Position-wise Feed-Forward Networks**
     - Two linear layers with a ReLU activation in between
-      $$
-      \begin{equation}
-      \text{FFN}(x) = \text{max}(0, xW_1 + b_1)W_2 + b_2
-      \end{equation}
-      $$
+      $$\text{FFN}(x) = \text{max}(0, xW_1 + b_1)W_2 + b_2$$
     - Input and output dims: $d_{\text{model}}=512$
     - Inner-layer dims: $d_{ff}=2048$
   - **Optimization**
