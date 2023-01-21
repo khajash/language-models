@@ -61,7 +61,7 @@ $$
 
 **Operations**
   1. **MatMul** - $QK^T$ - Calculate the alignment score to see how much the two word embeddings match - calculate between the each query $Q$ and key $K$
-  2. **Scale** -$\frac{1}{\sqrt{d_k}}$- Divide by $\sqrt{d_k}$ for more stable gradients, used for regularization and improves performance for larger models - $d_k$ is the dimension of the keys
+  2. **Scale** - $\frac{1}{\sqrt{d_k}}$ - Divide by $\sqrt{d_k}$ for more stable gradients, used for regularization and improves performance for larger models - $d_k$ is the dimension of the keys
   3. **Mask**  - (optional) mask out future positions
   4. **Softmax** - Apply softmax function to obtain the weights for the values $V$
   5. **MatMul** - Apply weights to values $V$
@@ -76,6 +76,7 @@ $$
 
 ### 2.3 Multi-Head Attention
 Rather than performing a single attention function with the scaled dot-product attention function with $d_\text{model}$ - dimensional keys, values and queries →  linearly project the QKV $h$ times with different learned linear projections
+
 $$
 \begin{equation}
 \begin{split}
