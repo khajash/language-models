@@ -1,6 +1,8 @@
 # Language Models
 In this repo, I built two types of language models: recurrent and transformer. I have a pipeline for training and doing hparam sweeps using W&B. Below, I give a brief intro into language models and transformer architecture, then outline the key components in the implementation. 
 
+**Note:** I am actively working on and improving this repo.
+
 <br>
 
 
@@ -14,10 +16,10 @@ P(u_{1}, \dots, u_{m}) = \prod_i^m P(u_i |u_{1}, \dots, u_{i-1})
 \end{equation}
 $$
 
- In practice, a langauge model takes in a sequence of tokens, feeds them through an embedding layer, decoder model and softmax function to output the probabilities over the vocabulary (vocab size = `ntoken`). The decoder model can be either a recurrent model (RNN, LSTM, GRU, etc.) or transformer. Recurrent models will process each word in sequence, while a transformer can process the sequence in parallel using a mask.
+ In practice, a langauge model takes in a sequence of tokens, feeds them through an embedding layer, decoder model and softmax function to output the probabilities over the vocabulary (vocab size = `ntoken`). The decoder model is typically either a recurrent model (RNN, LSTM, GRU, etc.) or transformer. Recurrent models will process each word in sequence, while a transformer can process the sequence in parallel using a mask.
 
 <p align="center">
-<img src="./imgs/LanguageModelDiagram.png" width="40%">
+<img src="./imgs/LanguageModelDiagram.png" width="30%">
 
 </p>
 
@@ -30,7 +32,7 @@ The Transformer architecture used here is similar to that employed in (Liu et al
 
 Below, I'll dive into the three important components of the transformer architecture: positional encoding, scaled dot-product attention, and multi-head attention. Here are some of the key parameters we'll be using in this doc.
 - $d_\text{model}$ : dimension of the embedding size and the layers within the model
-- $d_\text{vocab}$ : size of vocabulary
+- $d_\text{vocab}$ : size of vocabulary - listed as `ntoken` in diagrams
 
 ### 2.1 Positional Encoding
 We use positional encodings to inject information about relative or absolute position into the model. It is the size $d_\text{model}$ and can simply be added onto the word embedding. Vaswani et al. (2017) described two ways to create Positional Encoding: learned or sinusoidal. 
@@ -48,14 +50,57 @@ For this method, we precompute a PE matrix and store it in the buffer. $PE \in \
 ### 2.2 Scaled Dot-Product Attention
 Before looking at Multi-Head Attention, it's important to understand Scaled Dot-Product Attention. 
 
+**Queries, Keys and Values** \
+So, what are Queries $Q$, Keys $K$, and Values $V$? In concept, you can think of Scaled Dot-Product Attention as a differentiable lookup table, where the lookup table has keys and associated values (similar to a dictionary if you aren't familiar with lookup tables). Because we may not have access to the direct Keys in the lookup table, we use Queries and calculate the similarity/alignment score between the Queries and the Keys. In self-attention, the Query, Key and Value are all the same values.
+
 $$
 \begin{equation}
 \text{Attention}(Q,K,V) = \text{softmax}(\frac{Q K^T}{\sqrt{d_k}})V
 \end{equation}
 $$
 
-### 2.3 Multi-Head Attention
+**Operations**
+  1. **MatMul** - $QK^T$ - Calculate the alignment score to see how much the two word embeddings match - calculate between the each query $Q$ and key $K$
+  2. **Scale** -$\frac{1}{\sqrt{d_k}}$- Divide by $\sqrt{d_k}$ for more stable gradients, used for regularization and improves performance for larger models - $d_k$ is the dimension of the keys
+  3. **Mask**  - (optional) mask out future positions
+  4. **Softmax** - Apply softmax function to obtain the weights for the values $V$
+  5. **MatMul** - Apply weights to values $V$
 
+<p align="center">
+<img src="./imgs/ScaledDotProductAttention.png" alt="d" title="test" description="test" width="200"/>
+</p>
+
+
+<br>
+
+
+### 2.3 Multi-Head Attention
+Rather than performing a single attention function with the scaled dot-product attention function with $d_\text{model}$ - dimensional keys, values and queries →  linearly project the QKV $h$ times with different learned linear projections
+$$
+\begin{equation}
+\begin{split}
+\text{MultiHead}(Q,K,V) & = \text{Concat}(\text{head}_1, \dots,\text{head}_h)W^O\\
+\text{where} \; \text{head}_i  & = \text{Attention}(QW_i^Q,KW_i^K, VW_i^V) 
+\end{split}
+\end{equation}
+$$
+
+**Operations**
+1. **Linear** - Linearly project QKV each with its own set of weights
+   - This is where we project into different subspaces and learn alignment for different representations
+2. **Scaled Dot-Procduct Attention** - For each projected version, perform the scaled dot-product attention function in parallel
+3. **Concat** - Concatenate all of the scaled dot-product attention heads $(\text{head}_1, \dots,\text{head}_h)$
+4. **Linear** - Project the concatenated heads back to the size of $d_\text{model}$ to produce the final values
+
+<br>
+
+**Why Multi-head attention?**
+ - Can jointly attend to different representation subspaces at different positions
+ - Vaswani et al. (2017) used $h=8$ parallel attention layers
+     - $d_k = d_v = d_{\text{model}} / h = 64$
+ - Due to reduced dimension of each head, total computation cost is similar to that of a single-head attention with full dimensionality
+
+<br>
 
 ---
 
