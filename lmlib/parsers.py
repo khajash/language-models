@@ -67,12 +67,12 @@ def setup_training_parser():
         type=int,
         help="Max length of a sequence. (int, default = 35)",
     )
-    parser.add_argument(
-        "--lr",
-        default=5.0,
-        type=float,
-        help="Learning rate. (float, default = 1e-4)",
-    )
+    # parser.add_argument(
+    #     "--lr",
+    #     default=5.0,
+    #     type=float,
+    #     help="Learning rate. (float, default = 1e-4)",
+    # )
     parser.add_argument(
         "--save_model",
         action="store_true",

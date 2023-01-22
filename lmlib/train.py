@@ -12,7 +12,6 @@ from torch import nn, Tensor
 from models.transformer import TransformerModel
 from utils import generate_square_subsequent_mask
 from dataset import WikiText2Wrapper, get_batch
-# from schedulers import invsqrt_warm, cosine_warm
 from schedulers import InvSqrtWarmupLR, CosineWarmupLR
 import parsers
 
@@ -39,13 +38,12 @@ def train_loop(model: nn.Module, train_data, criterion, optimizer, scheduler, de
         loss = criterion(output.view(-1, ntokens), targets)
 
         # update gradients and perform sgd
-        # optimizer.zero_grad()
+        # NOTE: Scheduler takes care of optimizer.zero_grad() and optimizer.step()
         scheduler.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
 
         scheduler.step()
-        # optimizer.step()
 
         total_loss += loss.item()
         if batch % log_interval == 0 and batch > 0:
@@ -90,13 +88,9 @@ def setup_lr_scheduler(optimizer, config):
     elif name == "invsqrt_warm":
         # LR Scheduler from original attention paper
         scheduler = InvSqrtWarmupLR(optimizer, **config["config"])
-        # scheduler = torch.optim.lr_scheduler.LambdaLR(
-        #     optimizer, lr_lambda=lambda step: invsqrt_warm(step, **config["config"]))
     elif name == "cosine_warm":
         # LR Scheduler from GPT paper
         scheduler = CosineWarmupLR(optimizer, **config["config"])
-        # scheduler = torch.optim.lr_scheduler.LambdaLR(
-        #     optimizer, lr_lambda=lambda step: cosine_warm(step, **config["config"]))
     else:
         raise KeyError(f"Does not support LR Scheduler {name}")
         
@@ -106,8 +100,7 @@ def setup_lr_scheduler(optimizer, config):
 
 def main():
 
-    # Set this to True if you want to override config params with commandline params
-    # TODO: confirm this works correctly without sweep
+    # NOTE: Set this to True if you want to override config params with commandline params
     RUN_WANDB_SWEEP = False
 
     parent_parser = parsers.setup_training_parser()
@@ -125,7 +118,7 @@ def main():
     with open(args.config, "r") as f:
         config = json.load(f)
 
-    # Overwride json with any cmd args
+    # Overwrite json with any cmd args
     config.update(
         dataset="WikiText2",
         network=args.model,
@@ -165,12 +158,15 @@ def main():
         device=device)
     print(f"Train Data: {train_data.shape}, Val Data: {val_data.shape}")
 
-    model = TransformerModel(ntokens, **config["model_config"]).to(device)
     
+    model = TransformerModel(ntokens, **config["model_config"]).to(device)
     criterion = nn.CrossEntropyLoss()
-    # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
-    optimizer = model.configure_optimizers(weight_decay=0.01, learning_rate=config["lrscheduler"]["config"]["max_lr"], betas=(0.9, 0.95))
-    # optimizer = torch.optim.Adam(model.parameters(), lr=config["lrscheduler"]["config"]["max_lr"], betas=(0.9, 0.98), eps=1e-8)
+    
+    # configures optimizer to apply weight decay on linear layers only
+    optimizer = model.configure_optimizers(
+        weight_decay=0.01, 
+        learning_rate=config["lrscheduler"]["config"].get("max_lr", 2.5e-4),
+        betas=(0.9, 0.95))
     scheduler = setup_lr_scheduler(optimizer, config["lrscheduler"])
 
     if args.dryrun:
@@ -205,10 +201,6 @@ def main():
             best_val_loss = val_loss
             best_model = copy.deepcopy(model)
             torch.save(best_model.state_dict(), os.path.join(wandb.run.dir, "best_model.pt"))
-
-        # TODO: add early stopping if model is not performing well
-        # NOTE: moved lr scheduler step to each training iteration
-        # scheduler.step()
 
     torch.save(best_model.state_dict(), os.path.join(wandb.run.dir, "last_model.pt"))
     wandb.finish()
