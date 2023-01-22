@@ -98,6 +98,8 @@ The Transformer architecture used here is similar to that employed in (Liu et al
 
 <p align="center">
   <img src="./imgs/TransformerDecoderDiagram.png" width="75%" >
+  <br>
+  <em>Fig.2 Diagram of Transformer Decoder Language Model </em>
 </p>
 
 Below, I'll dive into the three important components of the transformer architecture: positional encoding, scaled dot-product attention, and multi-head attention. Here are some of the key parameters we'll be using in this doc.
@@ -113,7 +115,11 @@ For this method, we precompute a PE matrix and store it in the buffer. $PE \in \
   - Each row represents the encoding for a specific word at position $i$
   - Each column represents a different sinusoidal function at a different wavelength - every other column is alternating between sine and cosine - which is why there is banding in the upper dimensions because the wavelength is much larger.
 
-<img src="./imgs/positional_encoding_matrix.png" >
+<p align="center">
+  <img src="./imgs/positional_encoding_matrix.png" >
+  <br>
+  <em>Fig.3 Positional Encoding Matrix </em>
+</p>
 
 <br>
 
@@ -121,7 +127,7 @@ For this method, we precompute a PE matrix and store it in the buffer. $PE \in \
 Before looking at Multi-Head Attention, it's important to understand Scaled Dot-Product Attention. 
 
 **Queries, Keys and Values** \
-So, what are Queries $Q$, Keys $K$, and Values $V$? In concept, you can think of Scaled Dot-Product Attention as a differentiable lookup table, where the lookup table has keys and associated values (similar to a dictionary if you aren't familiar with lookup tables). Because we may not have access to the direct Keys in the lookup table, we use Queries and calculate the similarity/alignment score between the Queries and the Keys. In self-attention, the Query, Key and Value are all the same values.
+So, what are Queries $Q$, Keys $K$, and Values $V$? In concept, you can think of Scaled Dot-Product Attention as a differentiable dictionary lookup, where the dictionary has keys and associated values (similar to a python dictionary). Because we may not have access to the direct Keys in the lookup table, we use Queries and calculate the similarity/alignment score between the Queries and the Keys. In self-attention, the Query, Key and Value are all the same values.
 
 $$
 \begin{equation}
@@ -132,12 +138,14 @@ $$
 **Operations**
   1. **MatMul** - $QK^T$ - Calculate the alignment score to see how much the two word embeddings match - calculate between the each query $Q$ and key $K$
   2. **Scale** - $\frac{1}{\sqrt{d_k}}$ - Divide by $\sqrt{d_k}$ for more stable gradients, used for regularization and improves performance for larger models - $d_k$ is the dimension of the keys
-  3. **Mask**  - (optional) mask out future positions
+  3. **Mask**  - (optional) Mask out future positions
   4. **Softmax** - Apply softmax function to obtain the weights for the values $V$
   5. **MatMul** - Apply weights to values $V$
 
 <p align="center">
-<img src="./imgs/ScaledDotProductAttention.png" alt="d" title="test" description="test" width="200"/>
+  <img src="./imgs/ScaledDotProductAttention.png" alt="d" title="test" description="test" width="200"/>
+  <br>
+  <em>Fig.4 Scaled Dot Product Attention. Diagram from Vaswani et al. (2017) </em>
 </p>
 
 
@@ -145,7 +153,7 @@ $$
 
 
 ### 3.3 Multi-Head Attention
-Rather than performing a single attention function with the scaled dot-product attention function with $d_\text{model}$ - dimensional keys, values and queries →  linearly project the QKV $h$ times with different learned linear projections
+Rather than performing a single attention function with the scaled dot-product attention function, we linearly project QKV $h$ times with different learned linear projections.
 
 $$
 \begin{equation}
@@ -157,16 +165,17 @@ $$
 $$
 
 **Operations**
-1. **Linear** - Linearly project QKV each with its own set of weights
+1. **Linear** - Linearly project QKV each with its own set of weights. Do not use an activation fucntion here.
    - This is where we project into different subspaces and learn alignment for different representations
 2. **Scaled Dot-Procduct Attention** - For each projected version, perform the scaled dot-product attention function in parallel
 3. **Concat** - Concatenate all of the scaled dot-product attention heads $(\text{head}_1, \dots,\text{head}_h)$
-4. **Linear** - Project the concatenated heads back to the size of $d_\text{model}$ to produce the final values
+4. **Linear** - Project the concatenated heads back to the original space to produce the final values
 
 <br>
 
 **Why Multi-head attention?**
- - Can jointly attend to different representation subspaces at different positions
+ - Word representations encode many different characteristics of the word. A single Scaled Dot-Product Attention layer would only be able to query these characteristics in one shot. E.g. maybe it determines its a verb but not that its past tense.
+ - Multi-Head Attention applies multiple linear transformations to the $\mathbf{Q}, \mathbf{K}, \mathbf{V}$- allowing the model to apply many different projections of the word representations into different subspaces, each focusing on a subset of the word’s characteristics
  - Vaswani et al. (2017) used $h=8$ parallel attention layers
      - $d_k = d_v = d_{\text{model}} / h = 64$
  - Due to reduced dimension of each head, total computation cost is similar to that of a single-head attention with full dimensionality
