@@ -27,6 +27,7 @@ def generate_sequence(model: nn.Module, dataset, device, prompt: str, max_len: i
 
             # select next word using method
             # pred [seq_len, batch_size, n_tokens]
+            method = method.lower()
             if method == "greedy":
                 next_token = greedy(pred)
             else:
@@ -65,10 +66,16 @@ def setup_parser():
         help="Path to pytorch model",
     )
     parser.add_argument(
-        "--n_epochs",
-        default=50,
+        "--decoding",
+        default="sampling",
+        type=str,
+        help="Decoding method used for selecting next token. Current options: {greedy, sampling}",
+    )
+    parser.add_argument(
+        "--max_len",
+        default=10,
         type=int,
-        help="Number of epochs to run the training. (int, default = 50)",
+        help="Max length of sequence to produce.",
     )
     return parser.parse_args()
 
@@ -91,7 +98,7 @@ def main():
 
     # Generate new sequence
     sentence = "How to put up a tent. In order to assemble a tent"
-    sequence = generate_sequence(model, dataset, device, sentence, max_len=5, method="sampling")
+    sequence = generate_sequence(model, dataset, device, sentence, max_len=args.max_len, method=args.decoding)
     print(dataset.tokens2string(sequence.cpu().numpy()))
 
 
