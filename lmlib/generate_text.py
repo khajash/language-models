@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import json
+import argparse
 
 from utils import generate_square_subsequent_mask
 from dataset import WikiText2Wrapper
@@ -12,7 +13,6 @@ def generate_sequence(model: nn.Module, dataset, device, prompt: str, max_len: i
     # preprocess string into tokens
     sequence = dataset.data_process_str(prompt).view(-1,1).to(device)
     print("Sequence:  ", sequence.shape)
-
 
     model.to(device)
     model.eval()
@@ -45,30 +45,53 @@ def sampling(pred, temp=1):
     scaled_probs = nn.functional.softmax(pred[-1, 0, :]) / temp
     return torch.multinomial(scaled_probs, num_samples=1)
 
-# TODO: add more selection methods
+def setup_parser():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--datadir", 
+        default="/home/kate/Code", 
+        type=str,
+    )
+    parser.add_argument(
+        "--config",
+        default="./configs/simple-transformer.json", 
+        type=str,
+        help="Specify json config file.",
+    )
+    parser.add_argument(
+        "--model_path",
+        default="/home/kate/Code/language-models/lmlib/wandb/run-20230108_154613-2mnjpfp4/files/model.pt",
+        type=str,
+        help="Path to pytorch model",
+    )
+    parser.add_argument(
+        "--n_epochs",
+        default=50,
+        type=int,
+        help="Number of epochs to run the training. (int, default = 50)",
+    )
+    return parser.parse_args()
 
 def main():
-    model_path = "/home/kate/Code/language-models/lmlib/wandb/run-20230108_154613-2mnjpfp4/files/model.pt"
+    args = setup_parser()
 
-    dataset = WikiText2Wrapper("/home/kate/Code")
-    ntokens = dataset.get_vocab_size() # size of vocabulary
+    dataset = WikiText2Wrapper(args.data_dir)
+    ntokens = dataset.get_vocab_size()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Using device: ", device)
 
     # Load config file
-    config_fn = "./configs/simple-transformer.json"
-    with open(config_fn, "r") as f:
+    with open(args.config, "r") as f:
         config = json.load(f)
     
     # Load model
-    checkpoint = torch.load(model_path)
+    checkpoint = torch.load(args.model_path)
     model = TransformerModel(ntokens, **config["model_config"]).to(device)
     model.load_state_dict(checkpoint)
 
     # Generate new sequence
     sentence = "How to put up a tent. In order to assemble a tent"
     sequence = generate_sequence(model, dataset, device, sentence, max_len=5, method="sampling")
-    # print(sequence.shape, sequence)
     print(dataset.tokens2string(sequence.cpu().numpy()))
 
 
