@@ -167,7 +167,7 @@ $$
 **Operations**
 1. **Linear** - Linearly project QKV each with its own set of weights. Do not use an activation fucntion here.
    - This is where we project into different subspaces and learn alignment for different representations
-2. **Scaled Dot-Procduct Attention** - For each projected version, perform the scaled dot-product attention function in parallel
+2. **Scaled Dot-Product Attention** - For each projected version, perform the scaled dot-product attention function in parallel
 3. **Concat** - Concatenate all of the scaled dot-product attention heads $(\text{head}_1, \dots,\text{head}_h)$
 4. **Linear** - Project the concatenated heads back to the original space to produce the final values
 
